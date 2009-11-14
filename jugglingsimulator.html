@@ -1,0 +1,227 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+		<!-- <script src="file:///home/matt/experimentation/closure/closure-library-read-only/closure/goog/base.js"></script> -->
+    <script src="http://closure-library.googlecode.com/svn/trunk/closure/goog/base.js"></script>
+		<script type="text/javascript">
+goog.require('goog.graphics');
+goog.require('goog.structs');
+goog.require('goog.Timer');
+goog.require('goog.structs.Queue');
+goog.require('goog.events');
+goog.require('goog.ui.LabelInput');
+goog.require('goog.ui.Button');
+goog.require('goog.Disposable');
+		</script>
+		<style>
+#pattern { border: solid black 1px; width: 500px; height: 400px; }
+#debugDiv { 	display: none; }
+#config { background: yellow; width: 300px; padding: 1em; border: solid black 1px; }
+	</style>
+	<link rel="stylesheet" href="jugglingsimulator.css"/>
+  </head>
+  <body>
+	<h1>Juggling Simulator Demo</h1>
+	<div id="pattern"></div>
+	<div id="config"></div>
+	<div id="debugDiv">Debug log: <span id="debug">empty</span></div>
+	<script type="text/javascript">
+/**
+To avoid keyword collision we use the following:
+catch : c4tch
+throw : thr0w
+*/
+
+function log(s) {
+	goog.dom.setTextContent(goog.dom.$('debug'), s);
+}
+
+// Config options - TODO: These shouldn't be global.
+var width = 400;
+var height = 400;
+
+var g = -9.8;
+var dwell = 0.8;
+var fpb = 5; // Frames per beat
+var beat = 500; // Rate of throws
+var ppm = 10; // Pixels per metre // TODO: Zoom in/out according to max siteswap height
+var baseY = 300;
+var leftX = 150;
+var rightX = 220;
+var scoop = 50; // TODO: Lateral distance from catch to throw
+var radius = ppm/4;
+var pattern;
+var graphics = goog.graphics.createGraphics(width, height);
+var stroke = new goog.graphics.Stroke(1, 'black');
+var fill = new goog.graphics.SolidFill('#0000ff');
+var timer = new goog.Timer(fpb); // Used by all the balls for calculating the height and redrawing
+
+/* ************** Start here *********************** */
+config();
+pattern = new Pattern();
+/*****************************************************/
+
+function buildArray(siteswap) {
+	return siteswap && siteswap.split("");
+}
+
+function config() {
+	var siteswap = new goog.ui.LabelInput("Enter siteswap...");
+	var go = new goog.ui.Button("Go!");
+	goog.events.listen(go, goog.ui.Component.EventType.ACTION, function(e) {
+		pattern.dispose();
+		pattern = new Pattern(siteswap.getValue());
+		timer.restart();
+  });
+
+	var targetDiv = goog.dom.getElement('config') || document.body;
+	siteswap.render(targetDiv);
+	go.render(targetDiv);
+}
+
+function Pattern(opt_siteswapString) {
+	var siteswap = buildArray(opt_siteswapString) || new Array(4,2,3);
+
+	var leftHand_ = new Site(this, leftX, baseY);
+	var rightHand_ = new Site(this, rightX, baseY);
+
+	this.getTarget = function(n) {
+		return n%2 == 0? leftHand_ : rightHand_;
+	}
+
+	this.dispose = function() {
+		graphics.disposeInternal();
+	}
+
+	// temporary
+	graphics.render(goog.dom.$("pattern"));
+
+	// Pickup Balls
+	var siteswapSum = goog.array.reduce(siteswap, function(acc,n) { return parseInt(n)+acc; }, 0);
+	var nBalls = siteswapSum/siteswap.length;
+	for (var i=0; i<nBalls; i++) {
+		(i%2==0? leftHand_ : rightHand_).c4tch(new Ball());
+	}
+
+	var ss = new SsStream(siteswap);
+	var currentBeat = 0;
+	var t = 0;
+
+	goog.events.listen(timer, goog.Timer.TICK, function(e) {
+		if (t++ <= (beat/fpb)) return;
+		t = 0;
+		var n = ss.next();
+		var throwingSite = currentBeat%2 == 0? leftHand_ : rightHand_;
+		var catchingSite = (currentBeat+n)%2 == 0? leftHand_ : rightHand_;
+		currentBeat++;
+		throwingSite.createThrow(n, catchingSite);
+	});
+
+	timer.start();
+} goog.inherits(Pattern, goog.Disposable);
+
+/**
+A site is a hand
+*/
+function Site(pattern, x, y) {
+	this.x = x;
+	this.y = y;
+
+	var ballQueue = new goog.structs.Queue();
+	
+	this.createThrow = function(n, catchingSite) {
+		if (n == 0) return;
+		var ball = ballQueue.dequeue();
+		if (ball) {
+			var vx = (catchingSite.x - x) / (n-dwell);
+			var vy = -g*(n-dwell)/2;
+
+			catchingSite.expectCatch(ball);
+			new Thr0w(ball, vx, vy);
+		} else {
+			log("Null ball!");
+		}
+	}
+	
+	this.expectCatch = function(ball) {
+		ball.registerTarget(this);
+	}
+	
+	this.c4tch = function(ball) {
+		ball.setCenter(this.x, this.y);
+		ballQueue.enqueue(ball);
+	}
+}
+
+function Thr0w(ball, vx, vy) {
+	var t = 0;
+	var duration = -2*vy/g;
+	var startX = ball.x;
+
+	var debugCounter = 0;
+
+	function height(t) {
+		return ppm * ( g*t*t/2 + vy * t);	
+	}
+
+	function across(t) {
+		return vx*t;
+	}
+
+
+	var handler = new goog.events.EventHandler();
+	handler.listen(timer, goog.Timer.TICK, function(e) {
+		t += fpb/beat;
+		if (t < duration) {
+			ball.setCenter(startX + across(t), baseY-height(t));
+		} else {
+			ball.requestCatch();
+			handler.removeAll();
+			handler.dispose();
+		}
+	});
+}
+
+
+function Ball() {
+	this.x = 0;
+	this.y = 0;
+
+	var nextTarget;
+
+	this.element = graphics.drawCircle(this.x, this.y, radius, stroke, fill);
+
+	this.requestCatch = function() {
+		nextTarget.c4tch(this);
+	}
+
+	this.setCenter = function(x, y) {
+		this.x = x;
+		this.y = y;
+		this.element.setCenter(x, y);
+	}
+
+	this.registerTarget = function(hand) {
+		nextTarget = hand;
+	}
+
+}
+
+function SsStream(siteswap) {
+	var siteswapQueue = new goog.structs.Queue();
+
+	for (var s in siteswap) {
+		var s = siteswap[s];
+		siteswapQueue.enqueue(s);
+	}
+
+	this.next = function() {
+		log(siteswapQueue.getValues().toString());
+		var next = parseInt(siteswapQueue.dequeue());
+		siteswapQueue.enqueue(next);
+		return next;
+	}
+}
+	</script>
+  </body>
+</html>
