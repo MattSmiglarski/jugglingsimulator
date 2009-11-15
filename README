@@ -1,6 +1,20 @@
 JS.js - jugglingsimulator
 Started 12/11/09
 
+INFORMATION
+============
+If you don't understand what this is, check Wikipedia for a definition of siteswap.
+
+Example Siteswaps:
+5
+531
+7531
+97531
+423
+534
+645
+
+
 GETTING STARTED
 =======================
 Just open the page in any decent HTML 5 browser.
