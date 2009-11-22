@@ -1,8 +1,8 @@
 <!DOCTYPE HTML>
 <html>
   <head>
-		<!-- <script src="file:///home/matt/experimentation/closure/closure-library-read-only/closure/goog/base.js"></script> -->
-    <script src="http://closure-library.googlecode.com/svn/trunk/closure/goog/base.js"></script>
+		<script src="file:///home/matt/experimentation/closure/closure-library-read-only/closure/goog/base.js"></script>
+    <!-- <script src="http://closure-library.googlecode.com/svn/trunk/closure/goog/base.js"></script> -->
 		<script type="text/javascript">
 goog.require('goog.graphics');
 goog.require('goog.structs');
@@ -12,18 +12,51 @@ goog.require('goog.events');
 goog.require('goog.ui.LabelInput');
 goog.require('goog.ui.Button');
 goog.require('goog.Disposable');
+goog.require('goog.ui.Slider');
+goog.require('goog.ui.Component');
+goog.provide('ConfigWidget');
 		</script>
 		<style>
-#pattern { border: solid black 1px; width: 500px; height: 400px; }
-#debugDiv { 	display: none; }
+		.goog-slider-vertical,
+    .goog-slider-horizontal {
+      background-color: ThreeDFace;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .goog-slider-thumb {
+      position: absolute;
+      background-color: ThreeDShadow;
+      overflow: hidden;
+    }
+
+    .goog-slider-vertical .goog-slider-thumb {
+      left: 0;
+      height: 20px;
+      width: 100%;
+    }
+
+    .goog-slider-horizontal .goog-slider-thumb {
+      top: 0;
+      width: 20px;
+      height: 100%;
+    }
+ 
+#pattern { border: solid black 1px; width: 50%; }
+/*#debugDiv { 	display: none; }*/
 #config { background: yellow; width: 300px; padding: 1em; border: solid black 1px; }
 	</style>
 	<link rel="stylesheet" href="jugglingsimulator.css"/>
   </head>
   <body>
 	<h1>Juggling Simulator Demo</h1>
-	<div id="pattern"></div>
+	<div style="float:left">
+		<div id="pattern" style="float:left"></div>
+		<div id="configuration" style="float:left"></div>
+	</div>
+	<br style="clear:both"/>
 	<div id="config"></div>
+<br/>
 	<div id="debugDiv">Debug log: <span id="debug">empty</span></div>
 	<script type="text/javascript">
 /**
@@ -37,41 +70,111 @@ function log(s) {
 }
 
 // Config options - TODO: These shouldn't be global.
-var width = 400;
-var height = 400;
+var config = {
+	height: 400, // TODO:Resizing
+	width: 400,
+	baseY: 300,
+	fpb: 5,
+	leftX: 150,
+	rightX: 220,
+	dwell: 0.8,
+	beat: 500, // Rate of throws
+	ppm: 10, // Pixels per metre // TODO: Zoom in/out according to max siteswap height
+	scoop: 50, // TODO: Lateral distance from catch to throw
+	radius: 0.3, // Radius of the balls
+	g: -9.8
+}
 
-var g = -9.8;
-var dwell = 0.8;
-var fpb = 5; // Frames per beat
-var beat = 500; // Rate of throws
-var ppm = 10; // Pixels per metre // TODO: Zoom in/out according to max siteswap height
-var baseY = 300;
-var leftX = 150;
-var rightX = 220;
-var scoop = 50; // TODO: Lateral distance from catch to throw
-var radius = ppm/4;
+var minima = {
+	g: -20,
+	fpb: 1
+}
+
+var maxima = {
+	height: 1000,
+	width: 1000,
+	baseY: 500,
+	radius: 3,
+	g: 20,
+	leftX: 400,
+	rightX: 400,
+	dwell: 1,
+	beat: 1000,
+	fpb: 30
+}
+
 var pattern;
-var graphics = goog.graphics.createGraphics(width, height);
+var graphics = goog.graphics.createGraphics(config.width, config.height);
 var stroke = new goog.graphics.Stroke(1, 'black');
 var fill = new goog.graphics.SolidFill('#0000ff');
-var timer = new goog.Timer(fpb); // Used by all the balls for calculating the height and redrawing
-
-/* ************** Start here *********************** */
-config();
-pattern = new Pattern();
-/*****************************************************/
+var timer = new goog.Timer(config.fpb); // Used by all the balls for calculating the height and redrawing
 
 function buildArray(siteswap) {
 	return siteswap && siteswap.split("");
 }
 
-function config() {
+function ConfigWidget(property) {
+	goog.ui.Component.call(this);
+	var configWidget = goog.dom.createElement("div");
+	var wrapper = goog.dom.createElement("div");
+	
+	var label = goog.dom.createTextNode(property+": ");
+	var value = goog.dom.createTextNode(config[property]);
+
+	wrapper.style.float = "left";
+	wrapper.style.width = "6em";
+	configWidget.style.padding = "3px";
+
+	var slider = new goog.ui.Slider();
+	slider.setMinimum(minima[property]||0);
+	slider.setMaximum(maxima[property]||100);
+	slider.setStep(0.1);
+	slider.setValue(config[property]);
+
+	slider.createDom();
+	
+	slider.addEventListener(goog.ui.Component.EventType.CHANGE, function() {
+    value.nodeValue = slider.getValue()||config[property];
+		config[property] = parseFloat(value.nodeValue);
+  });
+
+	slider.setOrientation(goog.ui.Slider.Orientation.HORIZONTAL);
+	slider.setMoveToPointEnabled(true);
+
+	var sliderEl = slider.getElement();
+	sliderEl.style.width = "200px";
+	sliderEl.style.height = "20px";
+
+	wrapper.appendChild(label);
+	wrapper.appendChild(value);
+	configWidget.appendChild(sliderEl);
+
+	configWidget.appendChild(wrapper);
+
+	slider.render(configWidget);
+
+	this.slider_ = slider;
+	this.element_ = configWidget;
+}
+
+goog.inherits(ConfigWidget, goog.ui.Component);
+
+ConfigWidget.prototype.setVisible = function(visible) {
+	this.slider_.setVisible(visible);
+}	
+
+ConfigWidget.prototype.getElement = function() {
+	return this.element_;
+}
+
+ConfigWidget.prototype.setValue = function(value) { this.slider_.setValue(value); }
+
+function setupConfig() {
 	var siteswap = new goog.ui.LabelInput("Enter siteswap...");
 	var go = new goog.ui.Button("Go!");
 	goog.events.listen(go, goog.ui.Component.EventType.ACTION, function(e) {
 		pattern.dispose();
 		pattern = new Pattern(siteswap.getValue());
-		timer.restart();
   });
 
 	var targetDiv = goog.dom.getElement('config') || document.body;
@@ -79,11 +182,23 @@ function config() {
 	go.render(targetDiv);
 }
 
+function setupConfiguration() {
+	var configDiv = goog.dom.getElement('configuration');
+
+	for (var key in config) {
+		var widget = new ConfigWidget(key);
+		configDiv.appendChild(widget.getElement());
+		
+		widget.slider_.updateUi_();
+		widget.setVisible(true);
+	}
+}
+
 function Pattern(opt_siteswapString) {
 	var siteswap = buildArray(opt_siteswapString) || new Array(4,2,3);
 
-	var leftHand_ = new Site(this, leftX, baseY);
-	var rightHand_ = new Site(this, rightX, baseY);
+	var leftHand_ = new Site(this, config.leftX, config.baseY);
+	var rightHand_ = new Site(this, config.rightX, config.baseY);
 
 	this.getTarget = function(n) {
 		return n%2 == 0? leftHand_ : rightHand_;
@@ -108,7 +223,7 @@ function Pattern(opt_siteswapString) {
 	var t = 0;
 
 	goog.events.listen(timer, goog.Timer.TICK, function(e) {
-		if (t++ <= (beat/fpb)) return;
+		if (t++ <= (config.beat/config.fpb)) return;
 		t = 0;
 		var n = ss.next();
 		var throwingSite = currentBeat%2 == 0? leftHand_ : rightHand_;
@@ -133,8 +248,8 @@ function Site(pattern, x, y) {
 		if (n == 0) return;
 		var ball = ballQueue.dequeue();
 		if (ball) {
-			var vx = (catchingSite.x - x) / (n-dwell);
-			var vy = -g*(n-dwell)/2;
+			var vx = (catchingSite.x - x) / (n-config.dwell);
+			var vy = -config.g*(n-config.dwell)/2;
 
 			catchingSite.expectCatch(ball);
 			new Thr0w(ball, vx, vy);
@@ -148,20 +263,20 @@ function Site(pattern, x, y) {
 	}
 	
 	this.c4tch = function(ball) {
-		ball.setCenter(this.x, this.y);
+		ball.setCenter(this.x, config.baseY);
 		ballQueue.enqueue(ball);
 	}
 }
 
 function Thr0w(ball, vx, vy) {
 	var t = 0;
-	var duration = -2*vy/g;
+	var duration = -2*vy/config.g;
 	var startX = ball.x;
 
 	var debugCounter = 0;
 
 	function height(t) {
-		return ppm * ( g*t*t/2 + vy * t);	
+		return config.ppm * ( config.g*t*t/2 + vy * t);	
 	}
 
 	function across(t) {
@@ -171,9 +286,9 @@ function Thr0w(ball, vx, vy) {
 
 	var handler = new goog.events.EventHandler();
 	handler.listen(timer, goog.Timer.TICK, function(e) {
-		t += fpb/beat;
+		t += config.fpb/config.beat;
 		if (t < duration) {
-			ball.setCenter(startX + across(t), baseY-height(t));
+			ball.setCenter(startX + across(t), config.baseY-height(t));
 		} else {
 			ball.requestCatch();
 			handler.removeAll();
@@ -189,7 +304,7 @@ function Ball() {
 
 	var nextTarget;
 
-	this.element = graphics.drawCircle(this.x, this.y, radius, stroke, fill);
+	this.element = graphics.drawCircle(this.x, this.y, config.radius*config.ppm, stroke, fill);
 
 	this.requestCatch = function() {
 		nextTarget.c4tch(this);
@@ -222,6 +337,11 @@ function SsStream(siteswap) {
 		return next;
 	}
 }
-	</script>
+
+setupConfig();
+setupConfiguration();
+pattern = new Pattern();
+
+		</script>
   </body>
 </html>
